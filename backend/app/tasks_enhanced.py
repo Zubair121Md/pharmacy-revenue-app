@@ -76,18 +76,18 @@ def normalize_text(text, length, from_end=False):
     - Removing special characters except spaces and periods
     - Lowercasing
     - Taking first/last `length` characters
-    - Padding with underscores if shorter
+    - Padding with dashes if shorter
     """
     if not text or pd.isna(text):
-        return "_" * length
+        return "-" * length
     cleaned = re.sub(r'[^\w\s.]', '', str(text)).strip().lower()
     if not cleaned:
-        return "_" * length
+        return "-" * length
     if from_end:
         slice_txt = cleaned.replace(" ", "")[-length:]
     else:
         slice_txt = cleaned.replace(" ", "")[:length]
-    return slice_txt.upper().ljust(length, "_")
+    return slice_txt.upper().ljust(length, "-")
 
 def generate_id(facility_name: str, location: str, row_index: int, id_counter: Dict[str, str]) -> str:
     """
@@ -515,6 +515,14 @@ def create_chart_ready_data(db: Session, user) -> Dict:
                 area_revenue[area] = 0.0
             area_revenue[area] += _calc_revenue(record)
         
+        # Group by Product
+        product_revenue = {}
+        for record in matched_records:
+            product_name = record['master'].product_names or "Unknown"
+            if product_name not in product_revenue:
+                product_revenue[product_name] = 0.0
+            product_revenue[product_name] += _calc_revenue(record)
+        
         # Convert to chart format
         pharmacy_chart_data = [
             {"name": name, "revenue": float(revenue)}
@@ -541,6 +549,11 @@ def create_chart_ready_data(db: Session, user) -> Dict:
             for name, revenue in sorted(area_revenue.items(), key=lambda x: x[1], reverse=True)
         ]
         
+        product_chart_data = [
+            {"product_name": name, "revenue": float(revenue)}
+            for name, revenue in sorted(product_revenue.items(), key=lambda x: x[1], reverse=True)
+        ]
+        
         # Also compute total unique pharmacies from all uploaded invoices
         total_unique_pharmacies = len({inv.pharmacy_name for inv in invoices})
         
@@ -554,6 +567,7 @@ def create_chart_ready_data(db: Session, user) -> Dict:
             "rep_revenue": rep_chart_data,
             "hq_revenue": hq_chart_data,
             "area_revenue": area_chart_data,
+            "product_revenue": product_chart_data,
             "monthly_revenue": [],  # Will be implemented later
             "total_unique_pharmacies": total_unique_pharmacies,
             "growth_rate": growth_rate,
@@ -568,6 +582,7 @@ def create_chart_ready_data(db: Session, user) -> Dict:
             "rep_revenue": [],
             "hq_revenue": [],
             "area_revenue": [],
+            "product_revenue": [],
             "monthly_revenue": [],
             "growth_rate": 0.0
         }

@@ -94,7 +94,7 @@ function Dashboard() {
           Retry
         </Button>
       }>
-        {error}
+        {typeof error === 'string' ? error : JSON.stringify(error)}
       </Alert>
     );
   }

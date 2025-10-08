@@ -293,7 +293,7 @@ const FileUpload = () => {
                 </Button>
               }
             >
-              {error}
+              {typeof error === 'string' ? error : JSON.stringify(error)}
             </Alert>
           </Grid>
         )}

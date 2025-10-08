@@ -1,7 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, WebviewWindow};
@@ -23,9 +24,35 @@ async fn is_frontend_ready() -> bool {
 }
 
 // Start the Python backend server
-fn start_backend() -> std::io::Result<()> {
+fn start_backend() -> std::io::Result<Child> {
     println!("Starting Python backend...");
     
+    // Prefer project venv if present
+    let venv_python = "../backend/venv/bin/python";
+    if std::path::Path::new(venv_python).exists() {
+        match Command::new(venv_python)
+            .arg("-m")
+            .arg("uvicorn")
+            .arg("app.main_complete:app")
+            .arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg("8000")
+            .current_dir("../backend")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => {
+                println!("Backend started with project venv python");
+                return Ok(child);
+            }
+            Err(e) => {
+                println!("Failed to start backend with venv python: {}", e);
+            }
+        }
+    }
+
     // Try different Python commands
     let python_commands = ["python3", "python", "py"];
     
@@ -43,15 +70,9 @@ fn start_backend() -> std::io::Result<()> {
             .stderr(Stdio::piped())
             .spawn()
         {
-            Ok(mut child) => {
+            Ok(child) => {
                 println!("Backend started with {}", python_cmd);
-                
-                // Spawn a thread to handle the backend process
-                thread::spawn(move || {
-                    let _ = child.wait();
-                });
-                
-                return Ok(());
+                return Ok(child);
             }
             Err(e) => {
                 println!("Failed to start backend with {}: {}", python_cmd, e);
@@ -64,6 +85,50 @@ fn start_backend() -> std::io::Result<()> {
         std::io::ErrorKind::NotFound,
         "Could not start Python backend - Python not found"
     ))
+}
+
+// Start the React frontend dev server
+fn start_frontend() -> std::io::Result<Child> {
+    println!("Starting React frontend dev server...");
+
+    // Try npm, yarn, pnpm, bun
+    let commands: Vec<(&str, Vec<&str>)> = vec![
+        ("npm", vec!["run", "start"]),
+        ("yarn", vec!["start"]),
+        ("pnpm", vec!["start"]),
+        ("bun", vec!["run", "start"]),
+    ];
+
+    for (cmd, args) in commands {
+        let mut command = Command::new(cmd);
+        for a in &args { command.arg(a); }
+        let spawned = command
+            .current_dir("../frontend")
+            .env("BROWSER", "none") // prevent CRA from opening external browser
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+        match spawned {
+            Ok(child) => {
+                println!("Frontend started with {} {}", cmd, args.join(" "));
+                return Ok(child);
+            }
+            Err(e) => {
+                println!("Failed to start frontend with {}: {}", cmd, e);
+                continue;
+            }
+        }
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "Could not start React frontend - node package manager not found",
+    ))
+}
+
+struct AppState {
+    backend: Option<Child>,
+    frontend: Option<Child>,
 }
 
 // Wait for both services to be ready
@@ -158,17 +223,54 @@ fn main() {
                 `;
             "#);
             
-            // Start backend in a separate thread
-            thread::spawn(move || {
-                if let Err(e) = start_backend() {
-                    eprintln!("Failed to start backend: {}", e);
-                }
-            });
+            // Prepare shared state for child process handles
+            let state = Arc::new(Mutex::new(AppState { backend: None, frontend: None }));
+
+            // Start backend
+            {
+                let state_clone = Arc::clone(&state);
+                thread::spawn(move || {
+                    match start_backend() {
+                        Ok(child) => {
+                            let mut s = state_clone.lock().unwrap();
+                            s.backend = Some(child);
+                        }
+                        Err(e) => eprintln!("Failed to start backend: {}", e),
+                    }
+                });
+            }
+
+            // Start frontend
+            {
+                let state_clone = Arc::clone(&state);
+                thread::spawn(move || {
+                    match start_frontend() {
+                        Ok(child) => {
+                            let mut s = state_clone.lock().unwrap();
+                            s.frontend = Some(child);
+                        }
+                        Err(e) => eprintln!("Failed to start frontend: {}", e),
+                    }
+                });
+            }
             
             // Wait for both services to be ready
             let window_clone = window.clone();
             tauri::async_runtime::spawn(async move {
                 wait_for_services(window_clone).await;
+            });
+            
+            // Ensure child processes are terminated when app exits
+            let app_handle = app.handle();
+            let state_for_cleanup = Arc::clone(&state);
+            app_handle.once_global("tauri://close-requested", move |_| {
+                let mut s = state_for_cleanup.lock().unwrap();
+                if let Some(child) = s.backend.as_mut() {
+                    let _ = child.kill();
+                }
+                if let Some(child) = s.frontend.as_mut() {
+                    let _ = child.kill();
+                }
             });
             
             Ok(())

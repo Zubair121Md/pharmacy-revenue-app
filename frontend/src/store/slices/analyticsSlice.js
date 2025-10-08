@@ -1,6 +1,17 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { analyticsAPI } from '../../services/api';
 
+// Helper function to safely extract error message
+const getErrorMessage = (error, fallback) => {
+  const detail = error.response?.data?.detail;
+  if (typeof detail === 'string') {
+    return detail;
+  } else if (detail && typeof detail === 'object') {
+    return JSON.stringify(detail);
+  }
+  return fallback;
+};
+
 // Async thunks
 export const fetchDashboardData = createAsyncThunk(
   'analytics/fetchDashboardData',
@@ -9,7 +20,7 @@ export const fetchDashboardData = createAsyncThunk(
       const response = await analyticsAPI.getDashboard();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch dashboard data');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch dashboard data'));
     }
   }
 );
@@ -21,7 +32,7 @@ export const fetchRevenueByPharmacy = createAsyncThunk(
       const response = await analyticsAPI.getRevenueByPharmacy();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch pharmacy revenue');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch pharmacy revenue'));
     }
   }
 );
@@ -33,7 +44,7 @@ export const fetchRevenueByDoctor = createAsyncThunk(
       const response = await analyticsAPI.getRevenueByDoctor();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch doctor revenue');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch doctor revenue'));
     }
   }
 );
@@ -45,7 +56,7 @@ export const fetchRevenueByRep = createAsyncThunk(
       const response = await analyticsAPI.getRevenueByRep();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch rep revenue');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch rep revenue'));
     }
   }
 );
@@ -57,7 +68,7 @@ export const fetchRevenueByHQ = createAsyncThunk(
       const response = await analyticsAPI.getRevenueByHQ();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch HQ revenue');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch HQ revenue'));
     }
   }
 );
@@ -69,7 +80,19 @@ export const fetchRevenueByArea = createAsyncThunk(
       const response = await analyticsAPI.getRevenueByArea();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch area revenue');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch area revenue'));
+    }
+  }
+);
+
+export const fetchRevenueByProduct = createAsyncThunk(
+  'analytics/fetchRevenueByProduct',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await analyticsAPI.getRevenueByProduct();
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch product revenue'));
     }
   }
 );
@@ -81,7 +104,7 @@ export const fetchMonthlyTrends = createAsyncThunk(
       const response = await analyticsAPI.getMonthlyTrends();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to fetch monthly trends');
+      return rejectWithValue(getErrorMessage(error, 'Failed to fetch monthly trends'));
     }
   }
 );
@@ -93,7 +116,7 @@ export const clearAnalyticsCache = createAsyncThunk(
       const response = await analyticsAPI.clearCache();
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.detail || 'Failed to clear cache');
+      return rejectWithValue(getErrorMessage(error, 'Failed to clear cache'));
     }
   }
 );
@@ -115,6 +138,7 @@ const analyticsSlice = createSlice({
     revenueByRep: [],
     revenueByHQ: [],
     revenueByArea: [],
+    revenueByProduct: [],
     monthlyTrends: [],
     loading: false,
     error: null,
@@ -204,6 +228,19 @@ const analyticsSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
+      // Product revenue
+      .addCase(fetchRevenueByProduct.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchRevenueByProduct.fulfilled, (state, action) => {
+        state.loading = false;
+        state.revenueByProduct = action.payload;
+      })
+      .addCase(fetchRevenueByProduct.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
       // Monthly trends
       .addCase(fetchMonthlyTrends.pending, (state) => {
         state.loading = true;
@@ -225,6 +262,7 @@ const analyticsSlice = createSlice({
         state.revenueByRep = [];
         state.revenueByHQ = [];
         state.revenueByArea = [];
+        state.revenueByProduct = [];
         state.monthlyTrends = [];
         state.error = null;
       })
@@ -236,6 +274,7 @@ const analyticsSlice = createSlice({
         state.revenueByRep = [];
         state.revenueByHQ = [];
         state.revenueByArea = [];
+        state.revenueByProduct = [];
         state.monthlyTrends = [];
         state.loading = false;
         state.error = null;

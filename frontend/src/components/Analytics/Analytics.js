@@ -15,6 +15,17 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import {
   BarChart,
@@ -32,17 +43,121 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   fetchRevenueByPharmacy,
   fetchRevenueByDoctor,
   fetchRevenueByRep,
   fetchRevenueByHQ,
   fetchRevenueByArea,
+  fetchRevenueByProduct,
   fetchMonthlyTrends,
 } from '../../store/slices/analyticsSlice';
 import api, { analyticsAPI } from '../../services/api';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+
+// Helper function to format currency
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+// List View Component
+function RevenueListView({ data, title, nameKey, revenueKey, color }) {
+  if (!data || data.length === 0) {
+    return (
+      <Box>
+        {title && (
+          <Typography variant="h6" gutterBottom>
+            {title}
+          </Typography>
+        )}
+        <Typography color="text.secondary">
+          No data available
+        </Typography>
+      </Box>
+    );
+  }
+
+  const totalRevenue = data.reduce((sum, item) => sum + (item[revenueKey] || 0), 0);
+
+  return (
+    <Box>
+      {title && (
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6" gutterBottom>
+            {title}
+          </Typography>
+          <Chip 
+            label={`Total: ${formatCurrency(totalRevenue)}`} 
+            color="primary" 
+            variant="outlined"
+          />
+        </Box>
+      )}
+      
+      {!title && (
+        <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
+          <Chip 
+            label={`Total: ${formatCurrency(totalRevenue)}`} 
+            color="primary" 
+            variant="outlined"
+          />
+        </Box>
+      )}
+        
+        <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+          <Table stickyHeader size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell><strong>Rank</strong></TableCell>
+                <TableCell><strong>Name</strong></TableCell>
+                <TableCell align="right"><strong>Revenue</strong></TableCell>
+                <TableCell align="right"><strong>% of Total</strong></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map((item, index) => {
+                const percentage = totalRevenue > 0 ? ((item[revenueKey] || 0) / totalRevenue * 100) : 0;
+                return (
+                  <TableRow key={index} hover>
+                    <TableCell>
+                      <Chip 
+                        label={index + 1} 
+                        size="small" 
+                        color="primary" 
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" noWrap>
+                        {item[nameKey] || item.pharmacy_name || item.doctor_name || item.rep_name || item.hq || item.area || item.name || 'Unknown'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight="bold" color={color}>
+                        {formatCurrency(item[revenueKey] || 0)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" color="text.secondary">
+                        {percentage.toFixed(1)}%
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+    </Box>
+  );
+}
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -66,10 +181,12 @@ function Analytics() {
     revenueByRep,
     revenueByHQ,
     revenueByArea,
+    revenueByProduct,
     monthlyTrends,
     loading,
     error,
   } = useSelector((state) => state.analytics);
+
 
   const [tabValue, setTabValue] = useState(0);
   const [dateRange, setDateRange] = useState('30');
@@ -80,9 +197,10 @@ function Analytics() {
     2: 'bar', // Rep
     3: 'bar', // HQ
     4: 'bar', // Area
-    5: 'area', // Monthly Trends
-    6: 'bar', // Performance Analysis
-    7: 'bar', // Data Quality
+    5: 'bar', // Product
+    6: 'area', // Monthly Trends
+    7: 'bar', // Performance Analysis
+    8: 'bar', // Data Quality
   });
 
   const [dataQuality, setDataQuality] = useState(null);
@@ -95,6 +213,7 @@ function Analytics() {
     dispatch(fetchRevenueByRep());
     dispatch(fetchRevenueByHQ());
     dispatch(fetchRevenueByArea());
+    dispatch(fetchRevenueByProduct());
     dispatch(fetchMonthlyTrends());
     // Load Data Quality
     (async () => {
@@ -104,7 +223,8 @@ function Analytics() {
         const res = await analyticsAPI.getDataQuality();
         setDataQuality(res.data);
       } catch (e) {
-        setDqError('Failed to fetch data quality');
+        console.error('Data quality error:', e);
+        setDqError(e.response?.data?.detail || e.message || 'Failed to fetch data quality');
       } finally {
         setDqLoading(false);
       }
@@ -131,6 +251,7 @@ function Analytics() {
     dispatch(fetchRevenueByRep());
     dispatch(fetchRevenueByHQ());
     dispatch(fetchRevenueByArea());
+    dispatch(fetchRevenueByProduct());
     dispatch(fetchMonthlyTrends());
   };
 
@@ -149,7 +270,7 @@ function Analytics() {
           Retry
         </Button>
       }>
-        {error}
+        {typeof error === 'string' ? error : JSON.stringify(error)}
       </Alert>
     );
   }
@@ -188,6 +309,7 @@ function Analytics() {
             <Tab label="Revenue by Rep" />
             <Tab label="Revenue by HQ" />
             <Tab label="Revenue by Area" />
+            <Tab label="Revenue by Product" />
             <Tab label="Data Distribution" />
             <Tab label="Performance Analysis" />
             <Tab label="Data Quality" />
@@ -468,6 +590,59 @@ function Analytics() {
         <TabPanel value={tabValue} index={5}>
           <Box>
             <Typography variant="h6" gutterBottom>
+              Revenue by Product
+            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="body2" color="text.secondary">
+                Revenue by product performance
+              </Typography>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>Chart Type</InputLabel>
+                <Select
+                  value={chartType}
+                  label="Chart Type"
+                  onChange={handleChartTypeChange}
+                >
+                  <MenuItem value="bar">Bar Chart</MenuItem>
+                  <MenuItem value="pie">Pie Chart</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <ResponsiveContainer width="100%" height={revenueByProduct?.length > 10 ? 600 : 500}>
+              {chartType === 'bar' ? (
+                <BarChart data={revenueByProduct || []} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="product_name" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']} />
+                  <Bar dataKey="revenue" fill="#82ca9d" />
+                </BarChart>
+              ) : (
+                <PieChart>
+                  <Pie
+                    data={revenueByProduct || []}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ product_name, percent }) => `${product_name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="revenue"
+                  >
+                    {(revenueByProduct || []).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']} />
+                </PieChart>
+              )}
+            </ResponsiveContainer>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={6}>
+          <Box>
+            <Typography variant="h6" gutterBottom>
               Data Distribution
             </Typography>
             <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -580,7 +755,7 @@ function Analytics() {
           </Box>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={7}>
+        <TabPanel value={tabValue} index={8}>
           <Box>
             <Typography variant="h6" gutterBottom>
               Data Quality
@@ -590,7 +765,9 @@ function Analytics() {
                 <CircularProgress />
               </Box>
             ) : dqError ? (
-              <Alert severity="error">{dqError}</Alert>
+              <Alert severity="error">
+                {typeof dqError === 'string' ? dqError : JSON.stringify(dqError)}
+              </Alert>
             ) : (
               <>
                 <Grid container spacing={3} sx={{ mb: 2 }}>
@@ -657,6 +834,108 @@ function Analytics() {
           </Box>
         </TabPanel>
       </Card>
+
+      {/* Revenue Lists Section */}
+      <Box mt={4}>
+        <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
+          Revenue Data Lists
+        </Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+          Detailed revenue breakdowns in table format for all categories. Click to expand each section.
+        </Typography>
+        
+        <Box sx={{ width: '100%' }}>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6">Revenue by Pharmacy</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <RevenueListView
+                data={revenueByPharmacy}
+                title=""
+                nameKey="name"
+                revenueKey="revenue"
+                color="#0088FE"
+              />
+            </AccordionDetails>
+          </Accordion>
+          
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6">Revenue by Doctor</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <RevenueListView
+                data={revenueByDoctor}
+                title=""
+                nameKey="doctor_name"
+                revenueKey="revenue"
+                color="#00C49F"
+              />
+            </AccordionDetails>
+          </Accordion>
+          
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6">Revenue by Representative</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <RevenueListView
+                data={revenueByRep}
+                title=""
+                nameKey="rep_name"
+                revenueKey="revenue"
+                color="#FFBB28"
+              />
+            </AccordionDetails>
+          </Accordion>
+          
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6">Revenue by HQ</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <RevenueListView
+                data={revenueByHQ}
+                title=""
+                nameKey="hq"
+                revenueKey="revenue"
+                color="#FF8042"
+              />
+            </AccordionDetails>
+          </Accordion>
+          
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6">Revenue by Area</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <RevenueListView
+                data={revenueByArea}
+                title=""
+                nameKey="area"
+                revenueKey="revenue"
+                color="#8884D8"
+              />
+            </AccordionDetails>
+          </Accordion>
+          
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6">Revenue by Product</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <RevenueListView
+                data={revenueByProduct}
+                title=""
+                nameKey="product_name"
+                revenueKey="revenue"
+                color="#82ca9d"
+              />
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+      </Box>
     </Box>
   );
 }

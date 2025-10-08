@@ -63,7 +63,7 @@ const Login = () => {
 
             {error && (
               <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
+                {typeof error === 'string' ? error : JSON.stringify(error)}
               </Alert>
             )}
 

@@ -196,7 +196,10 @@ async def health_check():
 
 # Authentication endpoints
 @app.post("/api/v1/auth/login")
-async def login(username: str = Form(...), password: str = Form(...)):
+async def login(login_data: dict):
+    username = login_data.get("username")
+    password = login_data.get("password")
+    
     if username == "admin" and password == "admin123":
         user = User(id=1, username="admin", email="admin@pharmacy.com", full_name="Admin User", role="super_admin")
         return {
@@ -421,7 +424,12 @@ async def analyze_data(current_user: User = Depends(get_current_user)):
         })
         
         # Data already has IDs from file processing, no need to regenerate
-        
+
+        # IMPORTANT: clear previously stored invoices to prevent duplicate rows on re-analysis
+        # We rebuild matched invoices from the current in-memory DataFrame below
+        db.query(Invoice).delete()
+        db.commit()
+
         # Clear old unmatched records before processing new data
         from app.database import Unmatched
         db.query(Unmatched).delete()
@@ -785,6 +793,24 @@ async def get_area_revenue(current_user: User = Depends(get_current_user)):
         area = item.get("area") or "Unknown"
         area_revenue[area] = area_revenue.get(area, 0.0) + float(item["revenue"])
     return [{"area": k, "revenue": v} for k, v in area_revenue.items()]
+
+@app.get("/api/v1/analytics/product-revenue")
+async def get_product_revenue(current_user: User = Depends(get_current_user)):
+    try:
+        from app.tasks_enhanced import create_chart_ready_data
+        from app.database import get_db
+        
+        # Get database session
+        db = next(get_db())
+        
+        # Get chart data from database
+        chart_data = create_chart_ready_data(db, current_user)
+        
+        return chart_data["product_revenue"]
+        
+    except Exception as e:
+        logger.error(f"Error getting product revenue: {str(e)}")
+        return []
 
 @app.get("/api/v1/analytics/matched-results")
 async def get_matched_results(current_user: User = Depends(get_current_user)):

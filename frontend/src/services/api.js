@@ -39,12 +39,12 @@ api.interceptors.response.use(
 // Auth API
 export const authAPI = {
   login: (credentials) => {
-    const formData = new FormData();
-    formData.append('username', credentials.username);
-    formData.append('password', credentials.password);
-    return api.post('/api/v1/auth/login', formData, {
+    return api.post('/api/v1/auth/login', {
+      username: credentials.username,
+      password: credentials.password,
+    }, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': 'application/json',
       },
     });
   },
@@ -79,6 +79,7 @@ export const analyticsAPI = {
   getRevenueByRep: () => api.get('/api/v1/analytics/rep-revenue'),
   getRevenueByHQ: () => api.get('/api/v1/analytics/hq-revenue'),
   getRevenueByArea: () => api.get('/api/v1/analytics/area-revenue'),
+  getRevenueByProduct: () => api.get('/api/v1/analytics/product-revenue'),
   getMonthlyTrends: () => api.get('/api/v1/analytics/trends'),
   getSummary: () => api.get('/api/v1/analytics/summary'),
   analyze: () => api.post('/api/v1/analytics/analyze'),
